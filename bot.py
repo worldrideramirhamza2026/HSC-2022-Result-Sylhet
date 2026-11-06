@@ -450,6 +450,7 @@ def normalize_phone(phone):
         return "880" + digits
     return digits
 
+# এখানে Ctg মোডের আউটপুট ফরম্যাট আপডেট করা হয়েছে যাতে এক ক্লিকেই কপি করা যায় (কোড ট্যাগ `<pre>` ব্যবহার করে)
 def format_single_result(data):
     subject_lines = [f"{s['name']} → {s['marks']}" for s in data["subjects"]]
     subject_text = "\n".join(subject_lines) if subject_lines else "Subject details unavailable."
@@ -458,12 +459,12 @@ def format_single_result(data):
         "📌 <b>Exam: HSC 2026</b>\n"
         "🎓 <b>HSC RECHECK RESULT (APPLIED)</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🆔 Roll: {escape(data['roll'])}\n"
-        f"📝 Registration: {escape(data['registration'])}\n\n"
-        f"👤 Name: {escape(data['name'])}\n"
-        f"👨 Father: {escape(data['father'])}\n"
-        f"👩 Mother: {escape(data['mother'])}\n"
-        f"📞 Mobile: {escape(data['phone'])}\n\n"
+        f"🆔 Roll: <code>{escape(data['roll'])}</code>\n"
+        f"📝 Registration: <code>{escape(data['registration'])}</code>\n\n"
+        f"👤 Name: <code>{escape(data['name'])}</code>\n"
+        f"👨 Father: <code>{escape(data['father'])}</code>\n"
+        f"👩 Mother: <code>{escape(data['mother'])}</code>\n"
+        f"📞 Mobile: <code>{escape(data['phone'])}</code>\n\n"
         f"🏫 Board: {escape(data['board'])}\n"
         f"📚 Group: {escape(data['group'])}\n\n"
         f"📊 Result: {escape(data['result'])}\n"
@@ -681,7 +682,7 @@ async def mode_selection_callback(update: Update, context: ContextTypes.DEFAULT_
     
     if data == "mode_sonali":
         context.user_data["active_mode"] = "sonali"
-        context.user_data["sonali_step"] = "institution"  # স্টেপ ইনিশিয়ালাইজ করা হলো
+        context.user_data["sonali_step"] = "institution"
         current_search_id += 1
         
         keyboard = []
@@ -740,7 +741,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     mode = context.user_data.get("active_mode")
 
     if not mode:
-        await update.message.reply_text("দয়া করে প্রথমে /start কমান্ড দিয়ে মোড সিলেক্ট করুন।")
+        await update.message.reply_text("দয়া করে প্রথমে /start কমান্ড দিয়ে মোড সিলেক্ট করুন።")
         return
 
     # Sonali Mode Handling
@@ -799,7 +800,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         if single_match:
             previous = user_cooldowns.get(user_id, 0)
             if now - previous < COOLDOWN:
-                await update.message.reply_text("⏳ দয়া করে কয়েক সেকেন্ড অপেক্ষা করুন।")
+                await update.message.reply_text("⏳ দয়া করে কয়েক সেকেন্ড অপেক্ষা করুন።")
                 return
             user_cooldowns[user_id] = now
 
