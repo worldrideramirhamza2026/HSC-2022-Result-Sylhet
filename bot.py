@@ -56,9 +56,13 @@ def keep_alive():
 
 
 # =====================================================
-# CONFIGURATIONS & TOKENS
+# CONFIGURATIONS & TOKENS & CHANNELS
 # =====================================================
-BOT_TOKEN = "9036729577:AAEVuw-tlO8fDNloA47HDPIigZZGJqM0uPg"
+BOT_TOKEN = "9157950619:AAGbZiW0q6nOrwcpGZ3BVtLHPj8ZDIsy-68"
+
+# ⚠️ আপনার টেলিগ্রাম চ্যানেলের ইউজারনেম বা আইডি এখানে বসিয়ে দিন (বটকে অবশ্যই চ্যানেলের Admin বানাতে হবে)
+SONALI_CHANNEL_ID = "@HSC_Recheck_Sonali"  # উদাহরণ: "@my_sonali_channel" বা "-100xxxxxxxxxx"
+CTG_CHANNEL_ID = "@HSC_Recheck_Ctg"       # উদাহরণ: "@my_ctg_channel" বা "-100xxxxxxxxxx"
 
 # --- Sonali Configs ---
 SONALI_BASE_URL = "https://billpay.sonalibank.com.bd"
@@ -156,14 +160,12 @@ def get_sonali_data(tid):
     except Exception:
         return None
 
-async def process_student_results(update_or_query, data_list, institution_name):
+async def process_student_results(bot, update_or_query, data_list, institution_name):
     msg_source = update_or_query.message if hasattr(update_or_query, 'message') else update_or_query
-    final_output = "🏦 <b>Sonali Bank - Rescrutiny Result</b>\n\n"
-    phones = []
-
-    for i, data in enumerate(data_list, 1):
-        final_output += (
-            f"🎯 Result {i}\n"
+    
+    for data in data_list:
+        final_output = (
+            f"🏦 <b>Sonali Bank - Rescrutiny Result</b>\n\n"
             f"<pre>"
             f"🆔 Transaction Id: {data['id']}\n"
             f"👤 Student Name : {data['name']}\n"
@@ -174,24 +176,31 @@ async def process_student_results(update_or_query, data_list, institution_name):
             f"📳 Mobile No    : {data['contact']}\n"
             f"💰 Fee Amount   : {data['amount']} BDT\n"
             f"📅 Date         : {data['date']}"
-            f"</pre>\n\n"
+            f"</pre>"
         )
         p = data["contact"].strip()[-11:]
-        if len(p) >= 11 and p.isdigit() and p not in phones:
-            phones.append(p)
+        keyboard = []
+        if len(p) >= 11 and p.isdigit():
+            keyboard.append([
+                InlineKeyboardButton("🟢 WhatsApp", url=f"https://wa.me/88{p}"),
+                InlineKeyboardButton("🔵 Telegram", url=f"https://t.me/+88{p}")
+            ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
 
-    keyboard = []
-    for ph in phones:
-        keyboard.append([
-            InlineKeyboardButton("🟢 WhatsApp", url=f"https://wa.me/88{ph}"),
-            InlineKeyboardButton("🔵 Telegram", url=f"https://t.me/+88{ph}")
-        ])
+        # ১. ইউজারকে চ্যাটে পাঠানো
+        await msg_source.reply_text(final_output, parse_mode="HTML", reply_markup=reply_markup)
 
-    await msg_source.reply_text(
-        final_output,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None
-    )
+        # ২. সোনাভান চ্যানেলে ফরোয়ার্ড বা পাঠানো
+        try:
+            await bot.send_message(
+                chat_id=SONALI_CHANNEL_ID,
+                text=final_output,
+                parse_mode="HTML",
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Failed to send to Sonali Channel: {e}")
 
 async def run_sonali_search(update_or_query, context, s_r, e_r):
     global current_search_id
@@ -230,7 +239,7 @@ async def run_sonali_search(update_or_query, context, s_r, e_r):
                             v_list.append(d)
                 if v_list:
                     found_students += 1
-                    await process_student_results(update_or_query, v_list, institution_name)
+                    await process_student_results(context.bot, update_or_query, v_list, institution_name)
 
             if i % 5 == 0 or i == total_range:
                 await status_msg.edit_text(
@@ -450,7 +459,6 @@ def normalize_phone(phone):
         return "880" + digits
     return digits
 
-# এখানে Ctg মোডের আউটপুট ফরম্যাট আপডেট করা হয়েছে যাতে এক ক্লিকেই কপি করা যায় (কোড ট্যাগ `<pre>` ব্যবহার করে)
 def format_single_result(data):
     subject_lines = [f"{s['name']} → {s['marks']}" for s in data["subjects"]]
     subject_text = "\n".join(subject_lines) if subject_lines else "Subject details unavailable."
@@ -546,6 +554,8 @@ async def process_batch_rolls(bot, chat_id, user_id, start_roll, end_roll, messa
                         
                         msg = format_single_result(final_data)
                         markup = get_contact_keyboard(final_data["phone"])
+                        
+                        # ১. ইউজারকে চ্যাটে পাঠানো
                         try:
                             await bot.send_message(
                                 chat_id=chat_id,
@@ -555,6 +565,18 @@ async def process_batch_rolls(bot, chat_id, user_id, start_roll, end_roll, messa
                             )
                         except Exception:
                             pass
+
+                        # ২. চট্টগ্রাম রিচেক চ্যানেলে পাঠানো
+                        try:
+                            await bot.send_message(
+                                chat_id=CTG_CHANNEL_ID,
+                                text=msg,
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=markup
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to send to Ctg Channel: {e}")
+
                     else:
                         skipped_count += 1
                 else:
@@ -579,10 +601,19 @@ async def process_batch_rolls(bot, chat_id, user_id, start_roll, end_roll, messa
                 except Exception:
                     pass
 
-            await asyncio.sleep(0.4)
+            # ৩ সেকেন্ডের নিরাপদ বিরতি
+            await asyncio.sleep(3)
 
         if user_id in active_batch_jobs:
             del active_batch_jobs[user_id]
+
+        if active_batch_jobs.get(user_id, False):
+            await wait_msg.edit_text(
+                f"🛑 <b>SEARCH STOPPED BY USER</b>\n"
+                f"📊 Processed: {processed_count}/{total_in_batch}\n"
+                f"✅ Valid Found: {len(successful_results)}"
+            )
+            return
 
         if not successful_results:
             await wait_msg.edit_text(
@@ -591,29 +622,14 @@ async def process_batch_rolls(bot, chat_id, user_id, start_roll, end_roll, messa
             )
             return
 
-        file_lines = []
-        file_lines.append("==========================================")
-        file_lines.append(f" HSC 2026 APPLIED RECHECK REPORT ({actual_start} to {actual_end})")
-        file_lines.append(f" Board: {BOARD_NAME} | Total Found: {len(successful_results)}")
-        file_lines.append("==========================================\n")
-
-        for res in successful_results:
-            file_lines.append(f"Roll: {res['roll']} | Reg: {res['registration']}")
-            file_lines.append(f"Name: {res['name']}")
-            file_lines.append(f"Father: {res['father']} | Mother: {res['mother']}")
-            file_lines.append(f"Mobile: {res['phone']}")
-            file_lines.append(f"Group: {res['group']} | Result: {res['result']} | GPA: {res['gpa']}")
-            file_lines.append(f"Institute: {res['institute']}")
-            file_lines.append("Subjects & Marks:")
-            for s in res['subjects']:
-                file_lines.append(f"  - {s['name']} : {s['marks']}")
-            file_lines.append("-" * 40 + "\n")
-
-        file_content = "\n".join(file_lines)
-        file_path = f"applied_hsc_{actual_start}_{actual_end}_{user_id}.txt"
-
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(file_content)
+        next_start = actual_end + 1
+        next_end = next_start + BATCH_SIZE - 1
+        
+        callback_data = f"ctg_next_{next_start}_{next_end}"
+        keyboard = [[
+            InlineKeyboardButton(f"👉 Next 500? ({next_start}-{next_end})", callback_data=callback_data)
+        ]]
+        next_markup = InlineKeyboardMarkup(keyboard)
 
         summary_text = (
             "✅ <b>BATCH COMPLETED!</b>\n"
@@ -621,32 +637,10 @@ async def process_batch_rolls(bot, chat_id, user_id, start_roll, end_roll, messa
             f"📊 Range: {actual_start} - {actual_end}\n"
             f"✅ Total Valid Sent: {len(successful_results)}\n"
             f"❌ Skipped: {skipped_count}\n\n"
-            "📁 নিচে কমপ্লিট টেক্সট ফাইল ও Next 500 বাটন দেওয়া হলো:"
+            "👇 পরবর্তী ব্যাচ শুরু করতে নিচের বাটনে ক্লিক করুন:"
         )
 
-        await wait_msg.edit_text(summary_text, parse_mode=ParseMode.HTML)
-
-        with open(file_path, "rb") as f:
-            next_start = actual_end + 1
-            next_end = next_start + BATCH_SIZE - 1
-            
-            callback_data = f"ctg_next_{next_start}_{next_end}"
-            
-            keyboard = [[
-                InlineKeyboardButton(f"👉 Next 500? ({next_start}-{next_end})", callback_data=callback_data)
-            ]]
-            next_markup = InlineKeyboardMarkup(keyboard)
-
-            await bot.send_document(
-                chat_id=chat_id,
-                document=f,
-                filename=f"Results_{actual_start}_to_{actual_end}.txt",
-                caption=f"📄 রেঞ্জ ({actual_start} - {actual_end})-এর কমপ্লিট ব্যাকআপ ফাইল।",
-                reply_markup=next_markup
-            )
-
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        await wait_msg.edit_text(summary_text, parse_mode=ParseMode.HTML, reply_markup=next_markup)
 
     except Exception as e:
         logger.exception("Batch processing error")
@@ -741,7 +735,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     mode = context.user_data.get("active_mode")
 
     if not mode:
-        await update.message.reply_text("দয়া করে প্রথমে /start কমান্ড দিয়ে মোড সিলেক্ট করুন።")
+        await update.message.reply_text("দয়া করে প্রথমে /start কমান্ড দিয়ে মোড সিলেক্ট করুন।")
         return
 
     # Sonali Mode Handling
@@ -800,7 +794,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         if single_match:
             previous = user_cooldowns.get(user_id, 0)
             if now - previous < COOLDOWN:
-                await update.message.reply_text("⏳ দয়া করে কয়েক সেকেন্ড অপেক্ষা করুন።")
+                await update.message.reply_text("⏳ দয়া করে কয়েক সেকেন্ড অপেক্ষা করুন।")
                 return
             user_cooldowns[user_id] = now
 
@@ -814,8 +808,22 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                         final_data = combine_results(board_data, api_data)
                         msg = format_single_result(final_data)
                         markup = get_contact_keyboard(final_data["phone"])
+                        
+                        # ১. ইউজারকে চ্যাটে পাঠানো
                         await wait_msg.edit_text(msg, parse_mode=ParseMode.HTML, reply_markup=markup)
+                        
+                        # ২. চট্টগ্রাম চ্যানেলে পাঠানো
+                        try:
+                            await context.bot.send_message(
+                                chat_id=CTG_CHANNEL_ID,
+                                text=msg,
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=markup
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to send single result to Ctg Channel: {e}")
                         return
+
             await wait_msg.edit_text("❌ এই রোলটির জন্য কোনো রিচেক আবেদন বা ফোন নম্বর পাওয়া যায়নি।")
             return
 
@@ -833,7 +841,7 @@ async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id in active_batch_jobs:
         active_batch_jobs[user_id] = True
-        await update.message.reply_text("🛑 আপনার সার্চ প্রক্রিয়া বন্ধ করার নির্দেশ দেওয়া হয়েছে।")
+        await update.message.reply_text("🛑 আপনার সার্চ প্রক্রিয়া বন্ধ করার নির্দেশ দেওয়া হয়েছে। পরবর্তী রোল চেক শেষ করেই এটি থেমে যাবে।")
     else:
         global current_search_id
         current_search_id += 1
